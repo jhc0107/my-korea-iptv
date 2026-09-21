@@ -1,5 +1,4 @@
 import requests
-import os
 import sys
 
 
@@ -22,23 +21,27 @@ HEADERS = {
 }
 
 
+# ==========================================
+# 고정 채널
+# ==========================================
+
+KBS1_URL = "http://koreatv.dothome.co.kr/kbs1.php"
+KBS2_URL = "http://koreatv.dothome.co.kr/kbs2.php"
+KBS24_URL = "https://news24.gscdn.kbs.co.kr/news24-02/news24-02_hd.m3u8"
+MBC_URL = "http://vod.mpmbc.co.kr:1935/live/encoder-tv/playlist.m3u8"
+SBS_BACKUP_URL = "http://110.42.54.62:8080/live/sbs.m3u8"
+EBS1_URL = "http://ebsonairios.ebs.co.kr/groundwavetablet500k/tablet500k/playlist.m3u8"
+
+
+# ==========================================
+# SBS API에서 현재 주소 가져오기
+# ==========================================
+
+sbs_url = None
+
 print("========================================")
 print("SBS 방송 정보 확인")
 print("========================================")
-
-
-# ==========================================
-# 기본 M3U 내용
-# ==========================================
-
-m3u_header = """#EXTM3U
-#EXTINF:-1 tvg-id="SBS" tvg-name="SBS",SBS
-"""
-
-
-# ==========================================
-# SBS API 호출
-# ==========================================
 
 try:
 
@@ -54,83 +57,64 @@ try:
 
     data = response.json()
 
+    onair = data.get("onair", {})
+    info = onair.get("info", {})
+    source = onair.get("source", {})
+
+    print("채널 :", info.get("channelname", "SBS"))
+    print("프로그램 :", info.get("title", ""))
+    print("저작권 제한 :", info.get("copyright_yn", ""))
+    print("ON AIR 재생 :", info.get("playon_yn", ""))
+    print("안내 :", info.get("onair_text", ""))
+
+    # mediasource
+    media_source = source.get("mediasource", {})
+
+    if isinstance(media_source, dict):
+        sbs_url = media_source.get("mediaurl")
+
+    # mediasourcelist
+    if not sbs_url:
+
+        media_list = source.get("mediasourcelist", [])
+
+        if isinstance(media_list, list):
+
+            for media in media_list:
+
+                if not isinstance(media, dict):
+                    continue
+
+                media_url = media.get("mediaurl")
+
+                if media_url:
+                    sbs_url = media_url
+                    break
+
 except Exception as e:
 
     print("")
-    print("❌ SBS API 호출 실패")
+    print("⚠️ SBS API 호출 실패")
     print("오류:", e)
 
-    # API 실패해도 빈 M3U 생성
-    with open(M3U_FILE, "w", encoding="utf-8") as f:
-        f.write(m3u_header)
+
+# ==========================================
+# SBS 주소가 없으면 백업 주소 사용
+# ==========================================
+
+if sbs_url:
 
     print("")
-    print("✅ 빈 korea.m3u 생성 완료")
-    print("SBS 주소는 다음 실행에서 다시 확인합니다.")
+    print("✅ SBS 실시간 주소 확인")
+    print(sbs_url)
 
-    sys.exit(0)
+else:
 
+    print("")
+    print("⚠️ SBS 실시간 주소를 가져오지 못했습니다.")
+    print("→ SBS 기본 주소 대신 백업 주소를 사용합니다.")
 
-# ==========================================
-# 방송 정보
-# ==========================================
-
-onair = data.get("onair", {})
-info = onair.get("info", {})
-source = onair.get("source", {})
-
-channel_name = info.get("channelname", "SBS")
-program_title = info.get("title", "")
-onair_text = info.get("onair_text", "")
-copyright_yn = info.get("copyright_yn", "")
-playon_yn = info.get("playon_yn", "")
-
-print("")
-print("채널 :", channel_name)
-print("프로그램 :", program_title)
-print("저작권 제한 :", copyright_yn)
-print("ON AIR 재생 :", playon_yn)
-print("안내 :", onair_text)
-
-
-# ==========================================
-# HLS 주소 찾기
-# ==========================================
-
-sbs_url = None
-
-
-# 1. mediasource
-media_source = source.get("mediasource", {})
-
-if isinstance(media_source, dict):
-    sbs_url = media_source.get("mediaurl")
-
-
-# 2. mediasourcelist
-if not sbs_url:
-
-    media_list = source.get("mediasourcelist", [])
-
-    if isinstance(media_list, list):
-
-        for media in media_list:
-
-            if not isinstance(media, dict):
-                continue
-
-            media_url = media.get("mediaurl")
-
-            if media_url:
-
-                sbs_url = media_url
-
-                print(
-                    "화질 :",
-                    media.get("quality", "")
-                )
-
-                break
+    sbs_url = SBS_BACKUP_URL
 
 
 # ==========================================
@@ -145,27 +129,55 @@ try:
         encoding="utf-8"
     ) as f:
 
-        f.write(m3u_header)
+        f.write("#EXTM3U\n\n")
 
-        if sbs_url:
+        # KBS1
+        f.write(
+            '#EXTINF:-1 tvg-id="KBS1.kr" '
+            'tvg-name="KBS 1TV" '
+            'group-title="지상파",KBS 1TV\n'
+        )
+        f.write(KBS1_URL + "\n\n")
 
-            f.write(sbs_url + "\n")
+        # KBS2
+        f.write(
+            '#EXTINF:-1 tvg-id="KBS2.kr" '
+            'tvg-name="KBS 2TV" '
+            'group-title="지상파",KBS 2TV\n'
+        )
+        f.write(KBS2_URL + "\n\n")
 
-            print("")
-            print("========================================")
-            print("✅ SBS HLS 주소 확인")
-            print("========================================")
-            print(sbs_url)
+        # KBS NEWS 24
+        f.write(
+            '#EXTINF:-1 tvg-id="KBS24.kr" '
+            'tvg-name="KBS NEWS 24" '
+            'group-title="지상파",KBS NEWS 24\n'
+        )
+        f.write(KBS24_URL + "\n\n")
 
-        else:
+        # MBC
+        f.write(
+            '#EXTINF:-1 tvg-id="MBC.kr" '
+            'tvg-name="MBC" '
+            'group-title="지상파",MBC\n'
+        )
+        f.write(MBC_URL + "\n\n")
 
-            print("")
-            print("⚠️ 현재 SBS HLS 주소가 없습니다.")
-            print("빈 SBS 항목으로 korea.m3u를 생성합니다.")
+        # SBS
+        f.write(
+            '#EXTINF:-1 tvg-id="SBS.kr" '
+            'tvg-name="SBS" '
+            'group-title="지상파",SBS\n'
+        )
+        f.write(sbs_url + "\n\n")
 
-            if onair_text:
-                print("SBS 안내 :", onair_text)
-
+        # EBS1
+        f.write(
+            '#EXTINF:-1 tvg-id="EBS1.kr" '
+            'tvg-name="EBS 1TV" '
+            'group-title="지상파",EBS 1TV\n'
+        )
+        f.write(EBS1_URL + "\n")
 
     print("")
     print("========================================")
@@ -179,7 +191,3 @@ except Exception as e:
     print("오류:", e)
 
     sys.exit(1)
-
-
-print("")
-print("작업 완료")
