@@ -2,7 +2,7 @@ import requests
 
 # SBS 실시간 방송 API
 api_url = (
-    "https://apis.sbs.co.kr/play-api/1.0/onair/channel/SBS"
+    "https://apis.sbs.co.kr/play-api/1.0/onair/channel/S01"
     "?v_type=2&platform=pcweb&protocol=hls&ssl=N"
     "&rscuse=&jwt-token=&sbsmain="
 )
