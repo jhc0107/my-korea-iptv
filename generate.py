@@ -1,7 +1,12 @@
 import requests
 import json
+import os
+import sys
 
+# ==========================================
 # SBS 실시간 방송 API
+# ==========================================
+
 api_url = (
     "https://apis.sbs.co.kr/play-api/1.0/onair/channel/S01"
     "?v_type=2&platform=pcweb&protocol=hls&ssl=N"
@@ -18,67 +23,143 @@ headers = {
     "Referer": "https://www.sbs.co.kr/",
 }
 
-# SBS API 요청
-response = requests.get(
-    api_url,
-    headers=headers,
-    timeout=20
-)
+M3U_FILE = "korea.m3u"
 
-print("HTTP Status:", response.status_code)
 
-response.raise_for_status()
+# ==========================================
+# SBS API 호출
+# ==========================================
 
-data = response.json()
+try:
+    response = requests.get(
+        api_url,
+        headers=headers,
+        timeout=20
+    )
 
-# API 응답 구조 확인
-print("===== SBS API RESPONSE =====")
-print(json.dumps(data, ensure_ascii=False, indent=2))
-print("============================")
+    print("HTTP Status:", response.status_code)
 
-# mediasourcelist에서 HLS 주소 찾기
-media_list = (
-    data
-    .get("onair", {})
-    .get("source", {})
-    .get("mediasourcelist", [])
-)
+    response.raise_for_status()
+
+    data = response.json()
+
+except Exception as e:
+    print("SBS API 호출 실패")
+    print(e)
+
+    # 기존 M3U 유지
+    if os.path.exists(M3U_FILE):
+        print("기존 korea.m3u를 그대로 유지합니다.")
+        sys.exit(0)
+    else:
+        sys.exit(1)
+
+
+# ==========================================
+# 기본 정보 확인
+# ==========================================
+
+onair = data.get("onair", {})
+info = onair.get("info", {})
+source = onair.get("source", {})
+
+channel_name = info.get("channelname", "SBS")
+program_title = info.get("title", "")
+onair_text = onair.get("onair_text", "")
+
+print("")
+print("===== SBS 방송 정보 =====")
+print("채널 :", channel_name)
+print("프로그램 :", program_title)
+print("안내 :", onair_text)
+print("========================")
+print("")
+
+
+# ==========================================
+# HLS 주소 찾기
+# ==========================================
 
 sbs_url = None
 
-for media in media_list:
-    media_url = media.get("mediaurl")
+# 1. mediasource 확인
+media_source = source.get("mediasource", {})
 
-    if media_url:
-        sbs_url = media_url
-
-        print("화질:", media.get("quality"))
-        print("SBS URL:", sbs_url)
-
-        break
-
-# 기존 mediasource 구조도 확인
-if not sbs_url:
-    media_source = (
-        data
-        .get("onair", {})
-        .get("source", {})
-        .get("mediasource", {})
-    )
-
+if isinstance(media_source, dict):
     sbs_url = media_source.get("mediaurl")
 
-# URL을 찾지 못한 경우
+
+# 2. mediasourcelist 확인
 if not sbs_url:
-    print("SBS HLS 주소를 찾지 못했습니다.")
-    raise RuntimeError(
-        "SBS API 응답에 mediaurl이 없습니다."
-    )
+    media_list = source.get("mediasourcelist", [])
 
-# M3U 파일 생성
-with open("korea.m3u", "w", encoding="utf-8") as f:
-    f.write("#EXTM3U\n")
-    f.write('#EXTINF:-1 tvg-id="SBS" tvg-name="SBS",SBS\n')
-    f.write(sbs_url + "\n")
+    if isinstance(media_list, list):
+        for media in media_list:
 
-print("korea.m3u 생성 완료")
+            if not isinstance(media, dict):
+                continue
+
+            media_url = media.get("mediaurl")
+
+            if media_url:
+                sbs_url = media_url
+
+                print("화질 :", media.get("quality"))
+                break
+
+
+# ==========================================
+# 스트림이 없는 경우
+# ==========================================
+
+if not sbs_url:
+
+    print("⚠️ 현재 SBS HLS 스트림 주소가 없습니다.")
+
+    if onair_text:
+        print("SBS 안내 :", onair_text)
+
+    print("")
+    print("기존 korea.m3u를 변경하지 않습니다.")
+
+    # 중요:
+    # GitHub Actions가 실패하지 않도록 정상 종료
+    sys.exit(0)
+
+
+# ==========================================
+# HLS 주소 확인
+# ==========================================
+
+print("================================")
+print("SBS HLS 주소:")
+print(sbs_url)
+print("================================")
+
+
+# ==========================================
+# M3U 생성
+# ==========================================
+
+try:
+
+    with open(M3U_FILE, "w", encoding="utf-8") as f:
+
+        f.write("#EXTM3U\n")
+
+        f.write(
+            '#EXTINF:-1 tvg-id="SBS" '
+            'tvg-name="SBS",SBS\n'
+        )
+
+        f.write(sbs_url + "\n")
+
+    print("")
+    print("✅ korea.m3u 생성 완료")
+
+except Exception as e:
+
+    print("M3U 파일 생성 실패")
+    print(e)
+
+    sys.exit(1)
