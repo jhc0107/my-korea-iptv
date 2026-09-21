@@ -3,37 +3,91 @@ name: Update SBS M3U
 on:
   schedule:
     - cron: '*/30 * * * *'
+
   workflow_dispatch:
 
 permissions:
   contents: write
 
+
 jobs:
+
   update:
+
     runs-on: ubuntu-latest
 
     steps:
+
+      # ==========================================
+      # GitHub 저장소 가져오기
+      # ==========================================
+
       - name: Checkout
         uses: actions/checkout@v4
-        with: 
+        with:
           fetch-depth: 0
+
+
+      # ==========================================
+      # Python 설치
+      # ==========================================
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.x'
 
+
+      # ==========================================
+      # requests 설치
+      # ==========================================
+
       - name: Install requests
-        run: pip install requests
+        run: |
+          pip install requests
+
+
+      # ==========================================
+      # SBS M3U 생성
+      # ==========================================
 
       - name: Generate M3U
-        run: python generate.py
-
-      - name: Commit M3U
         run: |
+          python generate.py
+
+
+      # ==========================================
+      # 변경사항 확인
+      # ==========================================
+
+      - name: Check changes
+        id: changes
+        run: |
+          if git diff --quiet korea.m3u; then
+            echo "changed=false" >> $GITHUB_OUTPUT
+            echo "korea.m3u 변경사항 없음"
+          else
+            echo "changed=true" >> $GITHUB_OUTPUT
+            echo "korea.m3u 변경됨"
+          fi
+
+
+      # ==========================================
+      # M3U 저장
+      # ==========================================
+
+      - name: Commit and Push
+        if: steps.changes.outputs.changed == 'true'
+        run: |
+
           git config user.name "github-actions"
+
           git config user.email "github-actions@github.com"
+
           git add korea.m3u
-          git commit -m "Update SBS M3U" || echo "No changes"
+
+          git commit -m "Update SBS M3U"
+
           git pull --rebase origin main
+
           git push origin main
